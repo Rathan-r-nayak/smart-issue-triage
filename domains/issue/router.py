@@ -15,3 +15,6 @@ async def create_new_ticket(ticket: IssueCreate, db: Session = Depends(get_db)):
     """
     try:
         # new_ticket = create_issue
+        pass
+    except Exception as e:
+        pass
