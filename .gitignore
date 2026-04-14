@@ -11,3 +11,4 @@ wheels/
 *.toml
 *.lock
 *.vscode
+*.yml

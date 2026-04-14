@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from typing import Generator
 
 
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:supersecretpassword@localhost:5432/smart_issue_triage"
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:passworD%40321@localhost:5432/smart_issue_triage"
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autoflush=False, bind=engine)
