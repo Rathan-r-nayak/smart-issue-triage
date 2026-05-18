@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, func, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from src.modules.core.database import Base
-from src.modules.tickets.constants import TicketStatus, AssigneeOwner
+from src.modules.tickets.constants import TicketStatus, OwnerType
 
 class TicketModel(Base):
     __tablename__ = "tickets"
@@ -28,12 +28,14 @@ class TicketStatusHistoryModel(Base):
     status_entry_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     ticket_id = Column(Integer, ForeignKey("tickets.ticket_id"), nullable=False)
     
-    # Using Enums at the database level for strict data integrity
+    #  Using the updated OwnerType enum
     status = Column(SQLEnum(TicketStatus), nullable=False, default=TicketStatus.DRAFT)
-    assigned_owner = Column(SQLEnum(AssigneeOwner), nullable=False, default=AssigneeOwner.AI_AGENT)
+    owner_type = Column(SQLEnum(OwnerType), nullable=False, default=OwnerType.AI)
     
-    assigned_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # The fix we added to allow employee IDs alongside AI or Queues
+    assigned_employee_id = Column(String(50), ForeignKey("employees.employee_id"), nullable=True)
+    queue_name = Column(String(50), nullable=True)
     status_notes = Column(Text, nullable=True)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationship back to the core ticket
     ticket = relationship("TicketModel", back_populates="status_history")

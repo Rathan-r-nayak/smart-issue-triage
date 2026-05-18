@@ -13,5 +13,5 @@ class EmployeeModel(Base):
     default_location = Column(String(50), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationship to tickets
+    # Relationships
     tickets = relationship("TicketModel", back_populates="employee")

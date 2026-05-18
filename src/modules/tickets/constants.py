@@ -7,10 +7,9 @@ class TicketStatus(str, Enum):
     RESOLVED_BY_AI = "Resolved_by_AI"
     ESCALATED = "Escalated"
 
-class AssigneeOwner(str, Enum):
-    AI = "AI"             # Owned by the LangGraph Agent
-    QUEUE = "Queue"       # Sitting unassigned in a human queue
-    HUMAN = "Human"
+class OwnerType(str, Enum):
+    AI = "AI"             # Controlled by LangGraph
+    QUEUE = "Queue"       # Unassigned in human helpdesk queue
+    HUMAN = "Human"       # Assigned to a specific human employee
 
-# Local defaults for the ticket domain
-DEFAULT_CALLBACK_CONSENT = True
+DEFAULT_QUEUE_NAME = "Tier_1_Support"

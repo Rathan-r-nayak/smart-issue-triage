@@ -12,3 +12,4 @@ wheels/
 *.lock
 *.vscode
 *.yml
+*.env
