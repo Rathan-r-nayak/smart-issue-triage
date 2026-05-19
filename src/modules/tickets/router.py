@@ -7,56 +7,70 @@ from src.modules.core.database import get_db
 from src.modules.employees.models import EmployeeModel
 from src.modules.tickets.models import TicketModel, TicketStatusHistoryModel
 from src.modules.tickets.schemas import TicketCreate, TicketResponse, TicketStatusUpdate
-from src.modules.tickets.constants import TicketStatus, AssigneeOwner
+from src.modules.tickets.constants import TicketStatus, OwnerType
+
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from src.modules.core.database import get_db
+from src.modules.tickets.schemas import TicketCreate, TicketResponse
+from src.modules.tickets.repository import TicketRepository
+from src.modules.employees.repository import EmployeeRepository
+from src.modules.tickets.service import TicketService
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
+# Dependency Injection Factory Framework
+def get_ticket_service(db: Session = Depends(get_db)) -> TicketService:
+    ticket_repo = TicketRepository(db)
+    employee_repo = EmployeeRepository(db)
+    return TicketService(ticket_repo, employee_repo)
+
 @router.post("/", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
-def create_new_ticket(ticket_in: TicketCreate, db: Session = Depends(get_db)):
-    # 1. Verify Employee
-    employee = db.query(EmployeeModel).filter(EmployeeModel.employee_id == ticket_in.employee_id).first()
-    if not employee:
-        raise HTTPException(status_code=404, detail="Invalid employee_id.")
-
-    # 2. Create Core Ticket
-    new_ticket = TicketModel(**ticket_in.model_dump())
-    db.add(new_ticket)
-    db.flush() # Flushes to get the new ticket_id without committing yet
-
-    # 3. Create the Initial History Status automatically
-    initial_status = TicketStatusHistoryModel(
-        ticket_id=new_ticket.ticket_id,
-        status=TicketStatus.DRAFT,
-        assigned_owner=AssigneeOwner.AI_AGENT,
-        status_notes="Ticket initialized via smart-issue-triage agent."
-    )
-    db.add(initial_status)
+def create_ticket(ticket_in: TicketCreate, service: TicketService = Depends(get_ticket_service)):
+    try:
+        return service.create_new_ticket(ticket_in)
+    except ValueError as e:
+        # Gracefully handle missing/invalid data references with a clean 404
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        # Fallback mechanism for unexpected parsing failures
+        raise HTTPException(status_code=400, detail=str(e))
     
-    # 4. Commit transaction atomically
-    db.commit()
-    db.refresh(new_ticket) 
 
-    return new_ticket
 
 @router.patch("/{ticket_id}/status", response_model=TicketResponse)
-def update_ticket_status(ticket_id: int, update_in: TicketStatusUpdate, db: Session = Depends(get_db)):
-    ticket = db.query(TicketModel).filter(TicketModel.ticket_id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found.")
-
-    # Append new status row
-    new_history = TicketStatusHistoryModel(
-        ticket_id=ticket_id,
-        status=update_in.status,
-        assigned_owner=update_in.assigned_owner,
-        status_notes=update_in.status_notes
-    )
-    db.add(new_history)
-    db.commit()
-    db.refresh(ticket)
-    
-    return ticket
+def transit_ticket_status(ticket_id: int, update_in: TicketStatusUpdate, service: TicketService = Depends(get_ticket_service)):
+    try:
+        return service.update_lifecycle_status(ticket_id, update_in)
+    except ValueError as e:
+        # Map missing record exception cleanly to a 404
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/", response_model=List[TicketResponse])
-def get_all_tickets(db: Session = Depends(get_db)):
-    return db.query(TicketModel).order_by(TicketModel.created_at.desc()).all()
+def get_all_tickets(service: TicketService = Depends(get_ticket_service)):
+    # Automatically returns an empty list [] with HTTP 200 if no rows exist
+    return service.list_all_tickets()
+
+
+@router.get("/catalog-options", response_model=List[dict])
+def get_available_catalog(service: TicketService = Depends(get_ticket_service)):
+    """
+    Exposes all valid database catalog paths.
+    Your LangGraph AI agent calls this endpoint to update its memory 
+    with consistent classification options before executing a ticket creation.
+    """
+    catalog_items = service.get_catalog_manifest()
+    
+    # Format the response cleanly so it's easy for an LLM to parse out
+    return [
+        {
+            "id": item.id,
+            "catalog_category": item.category,
+            "catalog_item": item.item,
+            "request_sub_type": item.sub_type
+        }
+        for item in catalog_items
+    ]

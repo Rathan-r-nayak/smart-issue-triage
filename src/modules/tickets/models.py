@@ -39,3 +39,12 @@ class TicketStatusHistoryModel(Base):
     assigned_at = Column(DateTime(timezone=True), server_default=func.now())
 
     ticket = relationship("TicketModel", back_populates="status_history")
+
+
+class CatalogMasterModel(Base):
+    __tablename__ = "catalog_master"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    category = Column(String(50), nullable=False, index=True)      # e.g., "IT Services"
+    item = Column(String(50), nullable=False)                      # e.g., "Hardware Support"
+    sub_type = Column(String(100), nullable=True)                  # e.g., "Laptop Repair"
