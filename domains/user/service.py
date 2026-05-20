@@ -3,11 +3,15 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .model import UserDBModel
 from .schema import UserCreate
+from src.modules.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 def create_user(db: Session, user_data: UserCreate) -> UserDBModel:
     """
     Creates a new user profile in our local database.
     """
+    logger.info(f"Creating user: {user_data.email}")
     try:
         new_user = UserDBModel(
             id=user_data.id,
@@ -18,8 +22,10 @@ def create_user(db: Session, user_data: UserCreate) -> UserDBModel:
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
+        logger.info(f"Successfully created user with ID: {new_user.id}")
         return new_user
     except SQLAlchemyError as e:
+        logger.exception(f"Database error while creating user: {str(e)}")
         db.rollback()
         raise ValueError(f"Failed to create user. Email or ID might already exist. Details: {str(e)}")
 
@@ -27,4 +33,5 @@ def get_user_by_id(db: Session, user_id: str) -> UserDBModel:
     """
     Fetches a user so we can assign an issue to them.
     """
+    logger.info(f"Fetching user by ID: {user_id}")
     return db.query(UserDBModel).filter(UserDBModel.id == user_id).first()

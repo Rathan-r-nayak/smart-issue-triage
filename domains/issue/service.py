@@ -2,6 +2,9 @@ from sqlalchemy.orm import Session
 from .schema import IssueCreate
 from .model import IssueDBModel
 from sqlalchemy.exc import SQLAlchemyError
+from src.modules.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def create_issue(db: Session, issue_data: IssueCreate, reporter_id: str) -> IssueDBModel:
@@ -9,6 +12,7 @@ def create_issue(db: Session, issue_data: IssueCreate, reporter_id: str) -> Issu
     Core business logic for creating a ticket. 
     Accepts the validated payload and the strictly verified reporter_id.
     """
+    logger.info(f"Creating issue for reporter: {reporter_id}")
     try:
         new_issue = IssueDBModel(
             title = issue_data.title,
@@ -27,9 +31,11 @@ def create_issue(db: Session, issue_data: IssueCreate, reporter_id: str) -> Issu
 
         db.commit()
         db.refresh(new_issue)
-        
+
+        logger.info(f"Successfully created issue with ID: {new_issue.id} and Key: {new_issue.ticket_key}")
         return new_issue
 
     except SQLAlchemyError as e:
+        logger.exception(f"Database error while creating issue: {str(e)}")
         db.rollback()
         raise ValueError(f"Failed to create issue in database: {str(e)}")
