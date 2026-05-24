@@ -1,11 +1,12 @@
 from enum import Enum
 
 class TicketStatus(str, Enum):
-    DRAFT = "Draft"
-    OPEN = "Open"
-    IN_PROGRESS = "In_Progress"
+    OPEN = "Open"                       # Ticket registered by user, sitting in POOL
+    ASSIGNED = "Assigned"               # Claimed from the pool by an admin/agent
+    RESOLVED = "Resolved"               # Fixed by admin (Indexed to historical Vector DB!)
+    CLOSED = "Closed"                   # System hard-closed after resolution validation
+    
     RESOLVED_BY_AI = "Resolved_by_AI"
-    ESCALATED = "Escalated"
 
 class OwnerType(str, Enum):
     AI = "AI"             # Controlled by LangGraph

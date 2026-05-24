@@ -28,11 +28,10 @@ class TicketStatusHistoryModel(Base):
     status_entry_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     ticket_id = Column(Integer, ForeignKey("tickets.ticket_id"), nullable=False)
     
-    #  Using the updated OwnerType enum
-    status = Column(SQLEnum(TicketStatus), nullable=False, default=TicketStatus.DRAFT)
-    owner_type = Column(SQLEnum(OwnerType), nullable=False, default=OwnerType.AI)
+    # Changed from SQLEnum to standard String
+    status = Column(String(50), nullable=False, default=TicketStatus.OPEN.value)
+    owner_type = Column(String(50), nullable=False, default=OwnerType.AI.value)
     
-    # The fix we added to allow employee IDs alongside AI or Queues
     assigned_employee_id = Column(String(50), ForeignKey("employees.employee_id"), nullable=True)
     queue_name = Column(String(50), nullable=True)
     status_notes = Column(Text, nullable=True)

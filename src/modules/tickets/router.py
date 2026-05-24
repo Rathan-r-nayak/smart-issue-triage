@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from src.modules.core.database import get_db
 from src.modules.core.logger import get_logger
 
@@ -20,9 +20,11 @@ def get_ticket_service(db: Session = Depends(get_db)) -> TicketService:
     employee_repo = EmployeeRepository(db)
     return TicketService(ticket_repo, employee_repo)
 
+
+# 1. Create Ticket
 @router.post("/", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
 def create_ticket(ticket_in: TicketCreate, service: TicketService = Depends(get_ticket_service)):
-    logger.info(f"Received request to create ticket for user: {ticket_in.reporter_employee_id}")
+    logger.info(f"Received request to create ticket for user: {ticket_in.employee_id}")
     try:
         ticket = service.create_new_ticket(ticket_in)
         logger.info(f"Successfully created ticket: {ticket.ticket_id}")
@@ -37,22 +39,24 @@ def create_ticket(ticket_in: TicketCreate, service: TicketService = Depends(get_
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# 2. Update Status
+# @router.patch("/{ticket_id}/status", response_model=TicketResponse)
+# def transit_ticket_status(ticket_id: int, update_in: TicketStatusUpdate, service: TicketService = Depends(get_ticket_service)):
+#     logger.info(f"Received request to update status for ticket: {ticket_id}")
+#     try:
+#         ticket = service.update_lifecycle_status(ticket_id, update_in)
+#         logger.info(f"Successfully updated status for ticket: {ticket_id}")
+#         return ticket
+#     except ValueError as e:
+#         logger.error(f"Validation error updating ticket {ticket_id}: {str(e)}")
+#         # Map missing record exception cleanly to a 404
+#         raise HTTPException(status_code=404, detail=str(e))
+#     except Exception as e:
+#         logger.exception(f"Unexpected error updating ticket {ticket_id}: {str(e)}")
+#         raise HTTPException(status_code=400, detail=str(e))
 
-@router.patch("/{ticket_id}/status", response_model=TicketResponse)
-def transit_ticket_status(ticket_id: int, update_in: TicketStatusUpdate, service: TicketService = Depends(get_ticket_service)):
-    logger.info(f"Received request to update status for ticket: {ticket_id}")
-    try:
-        ticket = service.update_lifecycle_status(ticket_id, update_in)
-        logger.info(f"Successfully updated status for ticket: {ticket_id}")
-        return ticket
-    except ValueError as e:
-        logger.error(f"Validation error updating ticket {ticket_id}: {str(e)}")
-        # Map missing record exception cleanly to a 404
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.exception(f"Unexpected error updating ticket {ticket_id}: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
 
+# 3. Get ALL Tickets (Human UI only, NOT for AI)
 @router.get("/", response_model=List[TicketResponse])
 def get_all_tickets(service: TicketService = Depends(get_ticket_service)):
     logger.info("Fetching all tickets")
@@ -60,6 +64,7 @@ def get_all_tickets(service: TicketService = Depends(get_ticket_service)):
     return service.list_all_tickets()
 
 
+# 4. Catalog Options
 @router.get("/catalog-options", response_model=List[dict])
 def get_available_catalog(service: TicketService = Depends(get_ticket_service)):
     """
@@ -82,6 +87,7 @@ def get_available_catalog(service: TicketService = Depends(get_ticket_service)):
     ]
 
 
+# 5. Get by ID
 @router.get("/{ticket_id}", response_model=TicketResponse)
 def get_ticket_by_id(ticket_id: int, service: TicketService = Depends(get_ticket_service)):
     """Fetch details for a single target ticket."""
@@ -90,6 +96,8 @@ def get_ticket_by_id(ticket_id: int, service: TicketService = Depends(get_ticket
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+
+# search filters
 @router.get("/search/query", response_model=List[TicketResponse])
 def search_tickets_registry(
     employee_id: Optional[str] = Query(None, description="Filter by the raising employee's ID"),
@@ -104,4 +112,4 @@ def search_tickets_registry(
     try:
         return service.find_tickets(employee_id=employee_id, description_query=description)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))# 5. Get by ID

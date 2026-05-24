@@ -4,6 +4,7 @@ from src.modules.core.database import engine
 from src.modules import Base  # 🚨 Imports our gathered models to build them safely
 from src.modules.employees.router import router as employee_router
 from src.modules.tickets.router import router as ticket_router
+from src.modules.admin.router import router as admin_router
 from src.modules.core.logger import setup_logging, get_logger
 
 # Initialize logging
@@ -22,6 +23,8 @@ app = FastAPI(
 # Mount Routers
 app.include_router(employee_router, prefix="/api")
 app.include_router(ticket_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
+
 
 @app.get("/")
 def health_check():

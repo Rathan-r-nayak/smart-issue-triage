@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from src.modules.core.database import get_db
@@ -39,3 +41,18 @@ def get_employee(employee_id: str, service: EmployeeService = Depends(get_employ
     except ValueError as e:
         logger.error(f"Employee profile not found: {employee_id}")
         raise HTTPException(status_code=404, detail=str(e))
+
+
+def get_employee_repo(db: Session = Depends(get_db)) -> EmployeeRepository:
+    return EmployeeRepository(db)   
+
+@router.get("/", response_model=List[EmployeeResponse], status_code=status.HTTP_200_OK)
+def get_all_employees(repo: EmployeeRepository = Depends(get_employee_repo)):
+    """
+    **Fetch all employees.**
+    
+    Returns a complete list of all registered employees in the system. 
+    Useful for populating dropdowns or admin dashboards.
+    """
+    employees = repo.get_all()
+    return employees

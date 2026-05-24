@@ -1,18 +1,22 @@
+from datetime import datetime
 from typing import List, Optional
 from src.modules.core.logger import get_logger
 
 from src.modules.tickets.repository import TicketRepository
 from src.modules.employees.repository import EmployeeRepository
-from src.modules.tickets.schemas import TicketCreate, TicketStatusUpdate
+from src.modules.tickets.schemas import StatusHistoryCreateRequest, TicketCreate, TicketStatusUpdate
 from src.modules.tickets.models import CatalogMasterModel, TicketModel, TicketStatusHistoryModel
 from src.modules.tickets.constants import TicketStatus, OwnerType
 
 logger = get_logger(__name__)
 
 class TicketService:
-    def __init__(self, ticket_repo: TicketRepository, employee_repo: EmployeeRepository):
+    def __init__(self, ticket_repo: TicketRepository, employee_repo: EmployeeRepository, vector_store=None):
         self.ticket_repo = ticket_repo
         self.employee_repo = employee_repo
+        self.vector_store = vector_store
+
+
 
     def create_new_ticket(self, ticket_in: TicketCreate) -> TicketModel:
         logger.info(f"Creating new ticket for employee {ticket_in.employee_id}")
@@ -42,7 +46,7 @@ class TicketService:
         # 3. Automatically append the initial Draft state history tracking metric
         initial_status = TicketStatusHistoryModel(
             ticket_id=saved_ticket.ticket_id,
-            status=TicketStatus.DRAFT,
+            status=TicketStatus.OPEN,
             owner_type=OwnerType.AI,
             status_notes="Ticket initialized via smart-issue-triage agent."
         )
@@ -101,3 +105,96 @@ class TicketService:
     def find_tickets(self, employee_id: Optional[str] = None, description_query: Optional[str] = None) -> List[TicketModel]:
         """Orchestrate the search parameters for the repository lookup layer."""
         return self.ticket_repo.search_tickets(employee_id=employee_id, description_query=description_query)
+        
+
+    def search_knowledge_base(self, query: str, ticket_id: Optional[str] = None, category: Optional[str] = None) -> list:
+        """Queries the Vector DB for past resolved tickets."""
+        if not self.vector_store:
+            raise ValueError("Vector store is not initialized.")
+        
+        filters = {}
+        if ticket_id: 
+            filters["ticket_id"] = ticket_id
+        if category: 
+            filters["category"] = category
+
+
+        results = self.vector_store.similarity_search(
+            query = query,
+            k = 3,
+            filter = filters if filters else None
+        )
+
+        return results
+    
+
+    # update the ticket status
+    def admin_transit_ticket_status(self, ticket_id: int, update_data: StatusHistoryCreateRequest) -> TicketModel:
+        """
+        Transition a ticket to a new state by an Administrator.
+        Validation is handled by Pydantic; PostgreSQL stores standard strings.
+        """
+        ticket = self.ticket_repo.get_by_id(ticket_id)
+
+        if not ticket:
+            raise ValueError(f"Ticket #{ticket_id} not found.")
+
+        # update_data.status is validated by Pydantic against your Python Enum.
+        # We just safely extract the underlying string value (e.g., "Resolved").
+        target_status_str = update_data.status.value if hasattr(update_data.status, 'value') else str(update_data.status)
+        target_owner_str = update_data.owner_type.value if hasattr(update_data.owner_type, 'value') else str(update_data.owner_type)
+
+        if target_status_str == "Resolved":
+            if not update_data.resolution_summary or not update_data.resolution_summary.strip():
+                raise ValueError("A detailed resolution_summary is required to resolve a ticket.")
+            ticket.resolution_summary = update_data.resolution_summary
+
+        # Save directly to the database without fighting constraints
+        new_history_entry = TicketStatusHistoryModel(
+            ticket_id=ticket.ticket_id,
+            status=target_status_str,
+            owner_type=target_owner_str,
+            assigned_employee_id=update_data.assigned_employee_id,
+            queue_name=update_data.queue_name,
+            status_notes=update_data.status_notes,
+            assigned_at=datetime.utcnow()
+        )
+        
+        self.ticket_repo.save_history(new_history_entry)
+        self.ticket_repo.commit()
+
+        self.index_ticket_data(update_data, ticket)
+
+        return self.ticket_repo.refresh(ticket)
+
+    def index_ticket_data(self, update_data: StatusHistoryCreateRequest, ticket: TicketModel) -> None:
+        """
+        Structures and syncs a resolved technical issue into the vector store.
+        Uses decoupled metadata parameters for high-precision MCP filtering.
+        """
+        if update_data.status == TicketStatus.RESOLVED and self.vector_store:
+            try:
+                # Pair original symptoms with administrative fix action for optimized retrieval
+                searchable_document = (
+                    f"User Issue / Symptom: {ticket.ticket_description}\n"
+                    f"Admin Resolution / Fix Action: {ticket.resolution_summary}"
+                )
+
+                # Keep attributes completely flat and separated to align with the new Pydantic schema
+                metadata = {
+                    "ticket_id": str(ticket.ticket_id),
+                    "catalog_category": ticket.catalog_category,
+                    "catalog_item": ticket.catalog_item,
+                    "request_sub_type": ticket.request_sub_type or "None"
+                }
+                
+                # Commit to the vectorized knowledge base
+                self.vector_store.add_texts(
+                    texts=[searchable_document],
+                    metadatas=[metadata]
+                )
+                logger.info(f"Successfully vectorized and indexed resolved ticket #{ticket.ticket_id}")
+
+            except Exception as vector_error:
+                # Failsafe: Ensures a problem with your Vector DB network doesn't roll back the Postgres state
+                logger.error(f"PostgreSQL committed successfully, but background vector store indexing failed: {vector_error}")

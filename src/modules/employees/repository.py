@@ -1,3 +1,5 @@
+from typing import List
+
 from sqlalchemy.orm import Session
 from src.modules.employees.models import EmployeeModel
 from src.modules.core.logger import get_logger
@@ -19,3 +21,7 @@ class EmployeeRepository:
         self.db.refresh(employee)
         logger.info(f"Successfully created employee with ID: {employee.employee_id}")
         return employee
+    
+    def get_all(self) -> List[EmployeeModel]:
+        """Fetch all registered employees from the database."""
+        return self.db.query(EmployeeModel).all()
