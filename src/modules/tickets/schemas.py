@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Dict, Optional, List, Any
 from src.modules.tickets.constants import TicketStatus, OwnerType
 
 class StatusHistoryResponse(BaseModel):
@@ -125,3 +125,14 @@ class StatusHistoryCreateRequest(BaseModel):
         default=None, 
         description="Mandatory only when status is 'Resolved'. Explains the exact solution details for AI indexing."
     )
+
+
+class VectorSearchResult(BaseModel):
+    content: str
+    metadata: Dict[str, Any]
+    distance_score: float
+
+class KnowledgeBaseResponse(BaseModel):
+    query: str
+    total_results: int
+    matches: List[VectorSearchResult]

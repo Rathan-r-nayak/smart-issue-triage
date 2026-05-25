@@ -8,6 +8,7 @@ from src.modules.tickets.schemas import StatusHistoryCreateRequest
 from src.modules.tickets.repository import TicketRepository  # Adjust based on your setup
 from src.modules.employees.repository import EmployeeRepository  # Adjust based on your setup
 from src.modules.core.database import get_db
+from src.modules.config.vector_db import local_vector_store
 
 
 router = APIRouter(
@@ -24,7 +25,12 @@ def get_ticket_service(db: Session = Depends(get_db)) -> TicketService:
     # e.g., from src.config.vector_db import azure_vector_store
     vector_store = getattr(db, "vector_store", None) 
     
-    return TicketService(ticket_repo=ticket_repo, employee_repo=employee_repo, vector_store=vector_store)
+
+    return TicketService(
+        ticket_repo=ticket_repo, 
+        employee_repo=employee_repo, 
+        vector_store=local_vector_store
+    )
 
 
 @router.post("/{ticket_id}/status", status_code=status.HTTP_200_OK)

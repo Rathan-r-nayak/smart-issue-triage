@@ -1,14 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from src.modules.employees.router import get_employee_service
+from src.modules.employees.service import EmployeeService
 from src.modules.core.database import get_db
 from src.modules.core.logger import get_logger
 
 # Clean, beautiful Domain-Driven imports
-from src.modules.tickets.schemas import TicketCreate, TicketResponse, TicketStatusUpdate
+from src.modules.tickets.schemas import KnowledgeBaseResponse, TicketCreate, TicketResponse, TicketStatusUpdate
 from src.modules.tickets.repository import TicketRepository
 from src.modules.employees.repository import EmployeeRepository
 from src.modules.tickets.service import TicketService
+from src.modules.config.vector_db import local_vector_store
+
 
 logger = get_logger(__name__)
 
@@ -18,7 +22,7 @@ router = APIRouter(prefix="/tickets", tags=["Tickets"])
 def get_ticket_service(db: Session = Depends(get_db)) -> TicketService:
     ticket_repo = TicketRepository(db)
     employee_repo = EmployeeRepository(db)
-    return TicketService(ticket_repo, employee_repo)
+    return TicketService(ticket_repo, employee_repo, vector_store=local_vector_store)
 
 
 # 1. Create Ticket
@@ -87,14 +91,29 @@ def get_available_catalog(service: TicketService = Depends(get_ticket_service)):
     ]
 
 
-# 5. Get by ID
-@router.get("/{ticket_id}", response_model=TicketResponse)
-def get_ticket_by_id(ticket_id: int, service: TicketService = Depends(get_ticket_service)):
-    """Fetch details for a single target ticket."""
-    try:
-        return service.get_ticket_by_id(ticket_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+
+@router.get("/search-solutions", response_model=KnowledgeBaseResponse, status_code=status.HTTP_200_OK)
+def search_historical_solutions(
+    query: str = Query(..., description="The user's problem statement (e.g., 'My laptop screen is flickering')"),
+    catalog_category: Optional[str] = Query(None, description="Filter by main category (e.g., 'IT Services')"),
+    catalog_item: Optional[str] = Query(None, description="Filter by item (e.g., 'Hardware Support')"),
+    request_sub_type: Optional[str] = Query(None, description="Filter by specific sub-type"),
+    limit: int = Query(3, ge=1, le=10, description="Number of historical solutions to return"),
+    service: TicketService = Depends(get_ticket_service)
+):
+    """
+    **Semantic Knowledge Base Search**
+    
+    Searches past resolved tickets to provide immediate self-service solutions to employees.
+    Uses Hugging Face embeddings and strict metadata filtering for high precision.
+    """
+    return service.search_knowledge_base(
+        query=query,
+        category=catalog_category,
+        item=catalog_item,
+        sub_type=request_sub_type,
+        limit=limit
+    )
 
 
 # search filters
@@ -113,3 +132,16 @@ def search_tickets_registry(
         return service.find_tickets(employee_id=employee_id, description_query=description)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))# 5. Get by ID
+    
+
+
+
+# 5. Get by ID
+@router.get("/{ticket_id}", response_model=TicketResponse)
+def get_ticket_by_id(ticket_id: int, service: TicketService = Depends(get_ticket_service)):
+    """Fetch details for a single target ticket."""
+    try:
+        return service.get_ticket_by_id(ticket_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+

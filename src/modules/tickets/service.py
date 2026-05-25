@@ -107,25 +107,25 @@ class TicketService:
         return self.ticket_repo.search_tickets(employee_id=employee_id, description_query=description_query)
         
 
-    def search_knowledge_base(self, query: str, ticket_id: Optional[str] = None, category: Optional[str] = None) -> list:
-        """Queries the Vector DB for past resolved tickets."""
-        if not self.vector_store:
-            raise ValueError("Vector store is not initialized.")
+    # def search_knowledge_base(self, query: str, ticket_id: Optional[str] = None, category: Optional[str] = None) -> list:
+    #     """Queries the Vector DB for past resolved tickets."""
+    #     if not self.vector_store:
+    #         raise ValueError("Vector store is not initialized.")
         
-        filters = {}
-        if ticket_id: 
-            filters["ticket_id"] = ticket_id
-        if category: 
-            filters["category"] = category
+    #     filters = {}
+    #     if ticket_id: 
+    #         filters["ticket_id"] = ticket_id
+    #     if category: 
+    #         filters["category"] = category
 
 
-        results = self.vector_store.similarity_search(
-            query = query,
-            k = 3,
-            filter = filters if filters else None
-        )
+    #     results = self.vector_store.similarity_search(
+    #         query = query,
+    #         k = 3,
+    #         filter = filters if filters else None
+    #     )
 
-        return results
+    #     return results
     
 
     # update the ticket status
@@ -172,15 +172,14 @@ class TicketService:
         Structures and syncs a resolved technical issue into the vector store.
         Uses decoupled metadata parameters for high-precision MCP filtering.
         """
-        if update_data.status == TicketStatus.RESOLVED and self.vector_store:
+        if update_data.status == "Resolved" and self.vector_store:
             try:
-                # Pair original symptoms with administrative fix action for optimized retrieval
                 searchable_document = (
                     f"User Issue / Symptom: {ticket.ticket_description}\n"
                     f"Admin Resolution / Fix Action: {ticket.resolution_summary}"
                 )
 
-                # Keep attributes completely flat and separated to align with the new Pydantic schema
+                # Keep attributes completely flat and separated for MCP filtering
                 metadata = {
                     "ticket_id": str(ticket.ticket_id),
                     "catalog_category": ticket.catalog_category,
@@ -188,7 +187,9 @@ class TicketService:
                     "request_sub_type": ticket.request_sub_type or "None"
                 }
                 
-                # Commit to the vectorized knowledge base
+                # 💡 MAGIC HAPPENS HERE:
+                # add_texts automatically calls HuggingFace to embed 'searchable_document'
+                # and then saves the resulting vector alongside your metadata into Chroma!
                 self.vector_store.add_texts(
                     texts=[searchable_document],
                     metadatas=[metadata]
@@ -196,5 +197,58 @@ class TicketService:
                 logger.info(f"Successfully vectorized and indexed resolved ticket #{ticket.ticket_id}")
 
             except Exception as vector_error:
-                # Failsafe: Ensures a problem with your Vector DB network doesn't roll back the Postgres state
                 logger.error(f"PostgreSQL committed successfully, but background vector store indexing failed: {vector_error}")
+    
+
+    def search_knowledge_base(
+        self, 
+        query: str, 
+        category: Optional[str] = None, 
+        item: Optional[str] = None, 
+        sub_type: Optional[str] = None, 
+        limit: int = 3
+    ) -> dict:
+        """
+        Searches the Chroma vector store for similar resolved tickets using metadata filtering.
+        """
+        # 1. Dynamically build the metadata filter dictionary based on what the user provided
+        search_filter = {}
+        if category:
+            search_filter["catalog_category"] = category
+        if item:
+            search_filter["catalog_item"] = item
+        if sub_type:
+            search_filter["request_sub_type"] = sub_type
+
+        # LangChain Chroma expects None if there are no filters
+        actual_filter = search_filter if search_filter else None
+
+        try:
+            # 2. Perform the semantic similarity search
+            # similarity_search_with_score returns a tuple: (Document, distance_float)
+            # Lower distance means higher semantic similarity (L2 distance by default)
+            raw_results = self.vector_store.similarity_search_with_score(
+                query=query,
+                k=limit,
+                filter=actual_filter
+            )
+
+            # 3. Format the raw LangChain Documents into standard Python dictionaries
+            formatted_matches = []
+            for doc, score in raw_results:
+                formatted_matches.append({
+                    "content": doc.page_content,
+                    "metadata": doc.metadata,
+                    "distance_score": round(score, 4) # Rounding for cleaner JSON
+                })
+
+            return {
+                "query": query,
+                "total_results": len(formatted_matches),
+                "matches": formatted_matches
+            }
+
+        except Exception as e:
+            logger.error(f"Vector search failed: {e}")
+            # Graceful fallback if the DB is empty or fails
+            return {"query": query, "total_results": 0, "matches": []}
