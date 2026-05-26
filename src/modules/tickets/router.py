@@ -145,3 +145,17 @@ def get_ticket_by_id(ticket_id: int, service: TicketService = Depends(get_ticket
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+
+
+@router.get("/employee/{employee_id}", response_model=List[TicketResponse], status_code=status.HTTP_200_OK)
+def get_tickets_by_employee_id(
+    employee_id: str,
+    service: TicketService = Depends(get_ticket_service)
+):
+    """
+    **Fetch Employee Tickets**
+    
+    Returns a list of all tickets (including their status history) 
+    created by a specific employee ID. 
+    """
+    return service.get_employee_ticket_history(employee_id)

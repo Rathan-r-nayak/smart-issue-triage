@@ -252,3 +252,12 @@ class TicketService:
             logger.error(f"Vector search failed: {e}")
             # Graceful fallback if the DB is empty or fails
             return {"query": query, "total_results": 0, "matches": []}
+        
+
+    def get_employee_ticket_history(self, employee_id: str) -> List[TicketModel]:
+        """
+        Retrieves the complete ticket history for a specific employee.
+        """
+        # We just pass the call down to the repository. 
+        # If the employee has no tickets (or doesn't exist), this safely returns an empty list [].
+        return self.ticket_repo.get_tickets_by_employee(employee_id)

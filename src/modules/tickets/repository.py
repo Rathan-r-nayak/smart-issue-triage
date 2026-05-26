@@ -65,3 +65,13 @@ class TicketRepository:
             query = query.filter(TicketModel.ticket_description.ilike(f"%{description_query}%"))
             
         return query.order_by(TicketModel.created_at.desc()).all()
+
+
+    def get_tickets_by_employee(self, employee_id: str) -> List[TicketModel]:
+        """Fetch all tickets submitted by a specific employee."""
+        return (
+            self.db.query(TicketModel)
+            .filter(TicketModel.employee_id == employee_id)
+            .order_by(TicketModel.created_at.desc()) # Puts the newest tickets at the top!
+            .all()
+        )
